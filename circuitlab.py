@@ -269,12 +269,12 @@ def sweep(netlist, name, values, workers=8, **fixed):
         return list(ex.map(lambda v: simulate(netlist, **{**fixed, name: v}), values))
 
 
-def op_explorer(netlist, sliders, outputs, curves, title=""):
-    """.op(직류 동작점) 회로를 슬라이더로 탐색: 현재 값 표시 + 파라미터 스윕 곡선.
+def op_explorer(netlist, sliders, outputs, curves=None, title=""):
+    """.op(직류 동작점) 회로를 슬라이더로 탐색: 현재 값 표시 + 파라미터 스윕 곡선(선택).
 
     sliders: {"V": (최소, 최대, 초기값, "V"), "R": (...)}  (넷리스트의 {V}, {R}에 대응)
     outputs: {"I_D": (함수(res)->값, "A")}  res["v(out)"] 처럼 결과 조회
-    curves:  [dict(x="R", y="I_D", lo=10, hi=500e3, log=True, ylog=True), ...]
+    curves:  [dict(x="R", y="I_D", lo=10, hi=500e3, log=True, ylog=True), ...] (선택 사항)
              x 파라미터만 lo~hi로 훑고, 나머지는 슬라이더 값 고정. 현재 값은 점으로 표시.
     """
     widgets, labels = {}, {}
@@ -284,18 +284,21 @@ def op_explorer(netlist, sliders, outputs, curves, title=""):
                                          layout=w.Layout(width="420px"))
         labels[name] = w.HTML()
 
-    fig = make_subplots(rows=len(curves), cols=1, vertical_spacing=0.16,
-                        subplot_titles=[f"{c['y']} vs {c['x']}" for c in curves])
-    for i, c in enumerate(curves, start=1):
-        fig.add_scatter(x=[], y=[], mode="lines", name=c["y"], showlegend=False, row=i, col=1)
-        fig.add_scatter(x=[], y=[], mode="markers", marker=dict(size=11, color="#d62728"),
-                        name="현재 값", showlegend=False, row=i, col=1)
-        fig.update_xaxes(type="log" if c.get("log") else "linear", title_text=f"{c['x']} ({sliders[c['x']][3]})",
-                         row=i, col=1)
-        fig.update_yaxes(type="log" if c.get("ylog") else "linear", tickformat="~s",
-                         title_text=f"{c['y']} ({outputs[c['y']][1]})", row=i, col=1)
-    fig.update_layout(height=340 * len(curves), margin=dict(t=50, b=40), template="plotly_white")
-    fw = go.FigureWidget(fig)
+    fw = None
+    if curves:
+        fig = make_subplots(rows=len(curves), cols=1, vertical_spacing=0.16,
+                            subplot_titles=[f"{c['y']} vs {c['x']}" for c in curves])
+        for i, c in enumerate(curves, start=1):
+            fig.add_scatter(x=[], y=[], mode="lines", name=c["y"], showlegend=False, row=i, col=1)
+            fig.add_scatter(x=[], y=[], mode="markers", marker=dict(size=11, color="#d62728"),
+                            name="현재 값", showlegend=False, row=i, col=1)
+            fig.update_xaxes(type="log" if c.get("log") else "linear", title_text=f"{c['x']} ({sliders[c['x']][3]})",
+                             row=i, col=1)
+            fig.update_yaxes(type="log" if c.get("ylog") else "linear", tickformat="~s",
+                             title_text=f"{c['y']} ({outputs[c['y']][1]})", row=i, col=1)
+        fig.update_layout(height=340 * len(curves), margin=dict(t=50, b=40), template="plotly_white")
+        fw = go.FigureWidget(fig)
+
     table, status = w.HTML(), w.HTML()
     last = {}
 
@@ -312,18 +315,23 @@ def op_explorer(netlist, sliders, outputs, curves, title=""):
             table.value = "<table>" + "".join(
                 f"<tr><td style='padding-right:16px'>{k}</td><td style='text-align:right'><b>{eng(v, outputs[k][1])}</b></td></tr>"
                 for k, v in vals.items()) + "</table>"
-            with fw.batch_update():
-                for i, c in enumerate(curves):
-                    xs = np.geomspace(c["lo"], c["hi"], c.get("n", 40)) if c.get("log") else np.linspace(c["lo"], c["hi"], c.get("n", 40))
-                    others = {k: v for k, v in params.items() if k != c["x"]}
-                    ys = [outputs[c["y"]][0](r) for r in sweep(netlist, c["x"], xs, **others)]
-                    fw.data[2 * i].x, fw.data[2 * i].y = xs, ys
-                    fw.data[2 * i + 1].x, fw.data[2 * i + 1].y = [params[c["x"]]], [vals[c["y"]]]
+            if fw is not None and curves:
+                with fw.batch_update():
+                    for i, c in enumerate(curves):
+                        xs = np.geomspace(c["lo"], c["hi"], c.get("n", 40)) if c.get("log") else np.linspace(c["lo"], c["hi"], c.get("n", 40))
+                        others = {k: v for k, v in params.items() if k != c["x"]}
+                        ys = [outputs[c["y"]][0](r) for r in sweep(netlist, c["x"], xs, **others)]
+                        fw.data[2 * i].x, fw.data[2 * i].y = xs, ys
+                        fw.data[2 * i + 1].x, fw.data[2 * i + 1].y = [params[c["x"]]], [vals[c["y"]]]
             status.value = ""
         except Exception as e:
             status.value = f"<pre style='color:#c00'>{e}</pre>"
 
     for s in widgets.values():
         s.observe(refresh, names="value")
-    display(w.VBox([w.HTML(f"<h3>{title}</h3>"), *[w.HBox([widgets[n], labels[n]]) for n in widgets], table, status, fw]))
+
+    items = [w.HTML(f"<h3>{title}</h3>"), *[w.HBox([widgets[n], labels[n]]) for n in widgets], table, status]
+    if fw is not None:
+        items.append(fw)
+    display(w.VBox(items))
     refresh()
