@@ -1,0 +1,8 @@
+* Series RLC band-pass - output across R
+$PARAMS$
+V1 in 0 AC 1
+L1 in a {L}
+C1 a out {C}
+R1 out 0 {R}
+.ac dec 100 10 1Meg
+.end

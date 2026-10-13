@@ -1,0 +1,8 @@
+* Lab 02 DC: 9V battery -> diode -> resistor (closed loop with node 0 as reference)
+$PARAMS$
+V1 in 0 {V}
+D1 in out WP710A10SRD
+R1 out 0 {R}
+.model WP710A10SRD D(IS=2.45E-18 N=1.65 RS=4.5 BV=5 IBV=10U CJO=15P TT=20N EG=1.92 XTI=3)
+.op
+.end
